@@ -1,0 +1,58 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run pytest -q
+
+  dags:
+    runs-on: ubuntu-latest
+    env:
+      AIRFLOW_HOME: /tmp/airflow
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --python 3.12 --group airflow
+      - name: DAG integrity (imports, owners, retries, timeouts)
+        run: uv run --group airflow pytest -q tests/test_dag_integrity.py
+
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+
+  # Ships dags/ and pipelines/ to the Composer bucket after all checks pass on main.
+  # Auth: Workload Identity Federation, so no service-account keys are stored in GitHub.
+  deploy-dags:
+    if: github.ref == 'refs/heads/main' && vars.COMPOSER_DAGS_BUCKET != ''
+    needs: [python, dags, terraform]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: |
+          gcloud storage rsync dags "gs://${{ vars.COMPOSER_DAGS_BUCKET }}/dags" --recursive --delete-unmatched-destination-objects --exclude='__pycache__/.*'
+          gcloud storage rsync pipelines "gs://${{ vars.COMPOSER_DAGS_BUCKET }}/dags/pipelines" --recursive --delete-unmatched-destination-objects --exclude='__pycache__/.*'
