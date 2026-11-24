@@ -6,8 +6,7 @@
 ![Terraform](https://img.shields.io/badge/Terraform-844FBA)
 
 A production-shaped template for ingesting third-party reporting APIs into BigQuery with Cloud Composer
-(Airflow), distilled from 4+ years of building and operating production pipelines for a programmatic advertising
-network. It's written from scratch against a fictional API, so no employer code is included; the patterns are the
+(Airflow), distilled from building and operating production pipelines for a programmatic advertising network. It's written from scratch against a fictional API, so no employer code is included; the patterns are the
 ones that kept those pipelines reliable.
 
 ```mermaid
